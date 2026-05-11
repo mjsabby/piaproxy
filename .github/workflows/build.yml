@@ -1,0 +1,137 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-amd64
+            runner: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: .exe
+          - name: windows-arm64
+            runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            ext: .exe
+          - name: linux-amd64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            ext: ''
+          - name: darwin-arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            ext: ''
+
+    defaults:
+      run:
+        # Use bash everywhere (Git Bash on Windows runners) so the
+        # debug-info splitting step is identical across platforms.
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install LLVM (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends llvm
+
+      - name: Locate LLVM (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # GitHub-hosted Windows runners ship with LLVM preinstalled.
+          # Fall back to chocolatey if it isn't on PATH (e.g. arm64 image).
+          if ! command -v llvm-objcopy >/dev/null 2>&1; then
+            if [ -x "/c/Program Files/LLVM/bin/llvm-objcopy.exe" ]; then
+              echo "C:\\Program Files\\LLVM\\bin" >> "$GITHUB_PATH"
+            else
+              choco install -y llvm --no-progress
+              echo "C:\\Program Files\\LLVM\\bin" >> "$GITHUB_PATH"
+            fi
+          fi
+
+      # macOS: dsymutil and llvm-strip ship with the Xcode Command Line
+      # Tools preinstalled on macos-* runners. No setup needed.
+
+      - name: Build (with DWARF retained)
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p dist
+          # -trimpath normalizes file paths in DWARF/symbols.
+          # No -s/-w: keep DWARF + symbols so we can split them out below.
+          # The main package lives under ./cmd/piaproxyd; the repo root
+          # is the piaproxy *library* package.
+          go build -trimpath -o "dist/piaproxy-${{ matrix.name }}${{ matrix.ext }}" ./cmd/piaproxyd
+
+      - name: Split debug info into sidecar file
+        run: |
+          set -euo pipefail
+          bin="dist/piaproxy-${{ matrix.name }}${{ matrix.ext }}"
+          case "${{ matrix.goos }}" in
+            darwin)
+              # Mach-O: Go's linker embeds DWARF directly into the
+              # __DWARF segment but does NOT emit the OSO debug-map
+              # stabs that `dsymutil` walks, so dsymutil can't build a
+              # .dSYM from a Go binary ("no debug symbols in executable").
+              # Instead, keep an unstripped copy of the binary as the
+              # sidecar (it already contains the full DWARF), then strip
+              # the shipped binary with Apple's `strip -S`.
+              dbg="${bin}.dwarf"
+              cp "$bin" "$dbg"
+              chmod -x "$dbg" || true
+              strip -S "$bin"
+              ;;
+            linux|windows)
+              # ELF and PE/COFF: copy DWARF out, strip the binary, then
+              # attach a .gnu_debuglink section pointing at the sidecar.
+              # gdb/lldb honor this on ELF; gdb on Windows reads it for PE.
+              # NOTE: Go does not emit PDB, so PDB source link is N/A;
+              # source paths are embedded in DWARF (trimmed by -trimpath).
+              dbg="${bin}.debug"
+              llvm-objcopy --only-keep-debug "$bin" "$dbg"
+              llvm-objcopy --strip-all "$bin"
+              llvm-objcopy --add-gnu-debuglink="$dbg" "$bin"
+              ;;
+          esac
+          ls -la dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: piaproxy-${{ matrix.name }}
+          path: dist/piaproxy-${{ matrix.name }}*
+          if-no-files-found: error

@@ -1,0 +1,3 @@
+*.exe
+cmd/piaproxyd/piaproxyd
+scripts/__pycache__/

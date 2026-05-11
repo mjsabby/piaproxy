@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>piaproxy</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root {
+      --bg: #0e1116;
+      --panel: #161b22;
+      --panel2: #1c232c;
+      --border: #2a313c;
+      --fg: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --good: #3fb950;
+      --warn: #d29922;
+      --bad: #f85149;
+      --idle: #6e7681;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      margin: 0;
+      padding: 0;
+      font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    header {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      background: var(--panel);
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    header .meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .summary {
+      margin-left: auto;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .pill {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .pill b {
+      color: var(--fg);
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 14px;
+      padding: 18px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card .stripe {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--idle);
+      transition: background 0.3s;
+    }
+
+    .card.up .stripe {
+      background: var(--good);
+    }
+
+    .card.degraded .stripe {
+      background: var(--warn);
+    }
+
+    .card.error .stripe {
+      background: var(--bad);
+    }
+
+    .card.connecting .stripe {
+      background: var(--accent);
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .city {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .listen {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--idle);
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .badge.up {
+      background: var(--good);
+    }
+
+    .badge.degraded {
+      background: var(--warn);
+      color: #1a1300;
+    }
+
+    .badge.error {
+      background: var(--bad);
+    }
+
+    .badge.connecting {
+      background: var(--accent);
+      color: #00121f;
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      row-gap: 4px;
+      font-size: 12px;
+    }
+
+    .kv .k {
+      color: var(--muted);
+    }
+
+    .kv .v {
+      color: var(--fg);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .kv .v.warn {
+      color: var(--warn);
+    }
+
+    .kv .v.bad {
+      color: var(--bad);
+    }
+
+    .kv .v.good {
+      color: var(--good);
+    }
+
+    .bars {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 28px 1fr 96px;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .bar-row .label {
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .bar-row .value {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      text-align: right;
+      color: var(--fg);
+    }
+
+    .bar {
+      height: 8px;
+      background: var(--panel2);
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .bar>span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #79c0ff);
+      width: 0%;
+      transition: width 0.5s ease;
+    }
+
+    .bar.tx>span {
+      background: linear-gradient(90deg, #d2a8ff, #a371f7);
+    }
+
+    .spark {
+      display: block;
+      width: 100%;
+      height: 22px;
+      color: var(--accent);
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+    }
+
+    .spark.good {
+      color: var(--good);
+    }
+
+    .spark.warn {
+      color: var(--warn);
+    }
+
+    .spark.bad {
+      color: var(--bad);
+    }
+
+    .spark .baseline {
+      stroke: var(--border);
+      stroke-width: 1;
+    }
+
+    .spark .gap {
+      stroke: var(--bad);
+      stroke-width: 1;
+      stroke-dasharray: 1 2;
+      opacity: 0.6;
+    }
+
+    .err {
+      background: rgba(248, 81, 73, 0.10);
+      border: 1px solid rgba(248, 81, 73, 0.35);
+      color: #ffb1ad;
+      font-size: 12px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      word-break: break-word;
+    }
+
+    .leaderboard {
+      margin: 0 18px 18px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px 14px;
+    }
+
+    .leaderboard h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .leaderboard h2 .hint {
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--muted);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .lb-grid {
+      display: grid;
+      grid-template-columns: 130px 1fr 70px;
+      gap: 4px 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .lb-row {
+      display: contents;
+    }
+
+    .lb-row .lb-city {
+      color: var(--fg);
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .lb-row .lb-city .lb-region {
+      color: var(--muted);
+      font-weight: 400;
+      margin-left: 4px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 11px;
+    }
+
+    .lb-row .lb-bar {
+      height: 10px;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .lb-row .lb-bar>span {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: var(--good);
+      transition: width 0.5s ease, background 0.3s;
+    }
+
+    .lb-row.warn .lb-bar>span {
+      background: var(--warn);
+    }
+
+    .lb-row.bad .lb-bar>span {
+      background: var(--bad);
+    }
+
+    .lb-row.dim .lb-bar>span {
+      background: var(--idle);
+      opacity: 0.6;
+    }
+
+    .lb-row .lb-val {
+      text-align: right;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      color: var(--fg);
+    }
+
+    .lb-row.dim .lb-city,
+    .lb-row.dim .lb-val {
+      color: var(--muted);
+    }
+
+    .lb-row.bad .lb-val {
+      color: var(--bad);
+    }
+
+    footer {
+      color: var(--muted);
+      font-size: 11px;
+      padding: 12px 22px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>piaproxy <span class="meta" id="hdrMeta">loading…</span></h1>
+    <div class="summary">
+      <div class="pill"><b id="upCount">–</b> / <b id="totalCount">–</b> up</div>
+      <div class="pill">last update: <b id="lastUpdate">–</b></div>
+    </div>
+  </header>
+  <main id="grid"></main>
+  <section class="leaderboard" id="leaderboard">
+    <h2>Latency leaderboard <span class="hint">TCP ping to PIA WireGuard endpoint, sorted ascending</span></h2>
+    <div class="lb-grid" id="lbGrid"></div>
+  </section>
+  <footer>Polling /api/status every 2s. Throughput is exponential moving average over the last few samples.</footer>
+
+  <script>
+    (function () {
+      var grid = document.getElementById('grid');
+      var maxRate = 1; // for bar scaling, grows over time
+      var prevPayload = null;
+
+      function fmtBytes(n) {
+        if (!isFinite(n) || n < 0) n = 0;
+        var u = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+        var i = 0;
+        while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+        return (i === 0 ? n.toFixed(0) : n.toFixed(2)) + ' ' + u[i];
+      }
+      function fmtRate(bps) {
+        return fmtBytes(bps) + '/s';
+      }
+      function fmtDur(s) {
+        if (s == null || s < 0) return '–';
+        s = Math.floor(s);
+        var d = Math.floor(s / 86400); s -= d * 86400;
+        var h = Math.floor(s / 3600); s -= h * 3600;
+        var m = Math.floor(s / 60); s -= m * 60;
+        if (d > 0) return d + 'd' + h + 'h';
+        if (h > 0) return h + 'h' + m + 'm';
+        if (m > 0) return m + 'm' + s + 's';
+        return s + 's';
+      }
+      function fmtAgo(ms) {
+        if (!ms) return '–';
+        var s = (Date.now() - ms) / 1000;
+        return fmtDur(s) + ' ago';
+      }
+
+      function drawSpark(svg, history, colorClass) {
+        svg.setAttribute('class', 'spark' + (colorClass ? ' ' + colorClass : ''));
+        var n = history.length;
+        if (n < 2) { svg.innerHTML = ''; return; }
+
+        var W = 100, H = 22, pad = 2;
+        var vals = [];
+        for (var i = 0; i < n; i++) {
+          if (history[i] != null) vals.push(history[i]);
+        }
+        if (vals.length < 2) { svg.innerHTML = ''; return; }
+        var min = Math.min.apply(null, vals);
+        var max = Math.max.apply(null, vals);
+        if (max - min < 1) max = min + 1;
+
+        function px(i) { return (i / (n - 1)) * W; }
+        function py(v) { return H - pad - ((v - min) / (max - min)) * (H - 2 * pad); }
+
+        // Split into contiguous numeric segments; mark gaps for null entries.
+        var html = '';
+        var seg = [];
+        var prevValidIdx = -1;
+        for (var j = 0; j < n; j++) {
+          var v = history[j];
+          if (v == null) {
+            if (seg.length) {
+              html += '<polyline points="' + seg.join(' ') +
+                '" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';
+              seg = [];
+            }
+          } else {
+            if (prevValidIdx >= 0 && prevValidIdx < j - 1 && seg.length === 0) {
+              // Show a faint dashed line bridging the gap so the trend stays visible.
+              html += '<line class="gap" x1="' + px(prevValidIdx).toFixed(1) +
+                '" y1="' + py(history[prevValidIdx]).toFixed(1) +
+                '" x2="' + px(j).toFixed(1) +
+                '" y2="' + py(v).toFixed(1) +
+                '" vector-effect="non-scaling-stroke"/>';
+            }
+            seg.push(px(j).toFixed(1) + ',' + py(v).toFixed(1));
+            prevValidIdx = j;
+          }
+        }
+        if (seg.length) {
+          html += '<polyline points="' + seg.join(' ') +
+            '" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';
+        }
+
+        // Highlight the latest point.
+        var last = history[n - 1];
+        if (last != null) {
+          html += '<circle cx="' + px(n - 1).toFixed(1) +
+            '" cy="' + py(last).toFixed(1) +
+            '" r="1.6" fill="currentColor"/>';
+        }
+
+        // Min/max labels in the corners.
+        html += '<text x="1" y="6" font-size="6" fill="var(--muted)" font-family="ui-monospace,Consolas,monospace">' +
+          Math.round(max) + '</text>';
+        html += '<text x="1" y="21" font-size="6" fill="var(--muted)" font-family="ui-monospace,Consolas,monospace">' +
+          Math.round(min) + '</text>';
+
+        svg.innerHTML = html;
+      }
+
+      function ensureCard(s) {
+        var id = 'card-' + s.city.replace(/\s+/g, '_');
+        var el = document.getElementById(id);
+        if (el) return el;
+        el = document.createElement('section');
+        el.className = 'card';
+        el.id = id;
+        el._pingHistory = [];
+        el._lastProbeAtMs = 0;
+        el._sparkSeeded = false;
+        el.innerHTML = ''
+          + '<div class="stripe"></div>'
+          + '<div class="row">'
+          + '<div><div class="city"></div><div class="listen"></div></div>'
+          + '<div class="badge"></div>'
+          + '</div>'
+          + '<div class="kv">'
+          + '<div class="k">server</div><div class="v server"></div>'
+          + '<div class="k">peer ip</div><div class="v peerip"></div>'
+          + '<div class="k">uptime</div><div class="v uptime"></div>'
+          + '<div class="k">handshake</div><div class="v handshake"></div>'
+          + '<div class="k">probe</div><div class="v probe"></div>'
+          + '<div class="k">tcp ping</div><div class="v ping"></div>'
+          + '<div class="k">history</div><div class="v"><svg class="spark" viewBox="0 0 100 22" preserveAspectRatio="none"></svg></div>'
+          + '<div class="k">errors</div><div class="v errors"></div>'
+          + '</div>'
+          + '<div class="bars">'
+          + '<div class="bar-row"><span class="label">RX</span><div class="bar rx"><span></span></div><span class="value rx-val"></span></div>'
+          + '<div class="bar-row"><span class="label">TX</span><div class="bar tx"><span></span></div><span class="value tx-val"></span></div>'
+          + '</div>'
+          + '<div class="err" hidden></div>';
+        grid.appendChild(el);
+        return el;
+      }
+
+      function render(payload) {
+        document.getElementById('hdrMeta').textContent =
+          'control uptime ' + fmtDur(payload.uptime_sec);
+        document.getElementById('upCount').textContent = payload.up_count;
+        document.getElementById('totalCount').textContent = payload.proxy_count;
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
+        // Adapt bar scale based on observed rates.
+        payload.proxies.forEach(function (s) {
+          if (s.rx_rate_bps > maxRate) maxRate = s.rx_rate_bps;
+          if (s.tx_rate_bps > maxRate) maxRate = s.tx_rate_bps;
+        });
+        // Slowly decay the scale so old bursts don't keep things tiny.
+        maxRate = Math.max(1024, maxRate * 0.995);
+
+        payload.proxies.forEach(function (s) {
+          var el = ensureCard(s);
+          el.className = 'card ' + s.state;
+          el.querySelector('.city').textContent = s.city;
+          el.querySelector('.listen').textContent =
+            'socks5://' + s.listen + '   region=' + s.region;
+          var badge = el.querySelector('.badge');
+          badge.textContent = s.state;
+          badge.className = 'badge ' + s.state;
+
+          el.querySelector('.server').textContent =
+            s.server_cn ? (s.server_cn + ' (' + s.server_ip + ')') : '–';
+          el.querySelector('.peerip').textContent = s.peer_ip || '–';
+          el.querySelector('.uptime').textContent =
+            s.state === 'up' || s.state === 'degraded' ? fmtDur(s.uptime_sec) : '–';
+
+          var hs = el.querySelector('.handshake');
+          if (s.handshake_ago_s < 0) {
+            hs.textContent = '–'; hs.className = 'v handshake';
+          } else {
+            hs.textContent = fmtDur(s.handshake_ago_s) + ' ago';
+            hs.className = 'v handshake ' + (s.handshake_ago_s < 180 ? 'good' : 'warn');
+          }
+
+          var probe = el.querySelector('.probe');
+          if (!s.probe_at_ms) {
+            probe.textContent = '–'; probe.className = 'v probe';
+          } else {
+            probe.textContent =
+              (s.probe_ok ? '✓' : '✗') + ' ' + s.probe_status +
+              '  (' + s.probe_latency_ms + 'ms, ' + fmtAgo(s.probe_at_ms) + ')';
+            probe.className = 'v probe ' + (s.probe_ok ? 'good' : 'bad');
+          }
+
+          var ping = el.querySelector('.ping');
+          var pingClass = '';
+          var sample; // number for ok, null for fail, undefined to skip
+          if (s.ping_latency_ms < 0) {
+            ping.textContent = 'failed'; pingClass = 'bad';
+            sample = null;
+          } else if (s.ping_latency_ms === 0 && s.state !== 'up') {
+            ping.textContent = '–'; pingClass = '';
+            sample = undefined;
+          } else {
+            ping.textContent = s.ping_latency_ms + ' ms';
+            pingClass =
+              (s.ping_latency_ms < 80 ? 'good' :
+                s.ping_latency_ms < 200 ? 'warn' : 'bad');
+            sample = s.ping_latency_ms;
+          }
+          ping.className = 'v ping ' + pingClass;
+
+          // The backend only re-measures the ping ~every 30s, but we poll
+          // /api/status every 2s. Push a sparkline sample only when probe_at_ms
+          // has advanced, otherwise we'd record ~15 duplicates per real ping
+          // and the chart would look flat.
+          if (sample !== undefined && s.probe_at_ms && s.probe_at_ms !== el._lastProbeAtMs) {
+            if (!el._sparkSeeded && sample !== null) {
+              // First real measurement: backfill the buffer so the chart shows
+              // a full-width flat line instead of a single point. As genuine
+              // samples arrive they'll progressively replace the seed values.
+              for (var k = 0; k < 60; k++) el._pingHistory.push(sample);
+              el._sparkSeeded = true;
+            } else {
+              el._pingHistory.push(sample);
+              if (el._pingHistory.length > 60) {
+                el._pingHistory.splice(0, el._pingHistory.length - 60);
+              }
+            }
+          }
+          el._lastProbeAtMs = s.probe_at_ms;
+          drawSpark(el.querySelector('.spark'), el._pingHistory, pingClass);
+
+          el.querySelector('.errors').textContent =
+            'probes ' + (s.probe_count - s.probe_fails) + '/' + s.probe_count +
+            ', conns ' + (s.connect_tries - s.connect_fails) + '/' + s.connect_tries;
+
+          // Bars
+          var rxPct = Math.min(100, 100 * s.rx_rate_bps / maxRate);
+          var txPct = Math.min(100, 100 * s.tx_rate_bps / maxRate);
+          el.querySelector('.bar.rx > span').style.width = rxPct + '%';
+          el.querySelector('.bar.tx > span').style.width = txPct + '%';
+          el.querySelector('.rx-val').textContent =
+            fmtRate(s.rx_rate_bps) + '   (' + fmtBytes(s.rx_bytes) + ')';
+          el.querySelector('.tx-val').textContent =
+            fmtRate(s.tx_rate_bps) + '   (' + fmtBytes(s.tx_bytes) + ')';
+
+          var err = el.querySelector('.err');
+          if (s.last_error) {
+            err.hidden = false;
+            err.textContent = s.last_error;
+          } else {
+            err.hidden = true;
+            err.textContent = '';
+          }
+        });
+        renderLeaderboard(payload);
+        prevPayload = payload;
+      }
+
+      function renderLeaderboard(payload) {
+        var lb = document.getElementById('lbGrid');
+        var rows = payload.proxies.map(function (s) {
+          // 0 ms with non-up state means "not measured yet".
+          var hasSample = !(s.ping_latency_ms === 0 && s.state !== 'up');
+          var failed = s.ping_latency_ms < 0;
+          return {
+            city: s.city,
+            region: s.region,
+            ms: s.ping_latency_ms,
+            hasSample: hasSample,
+            failed: failed,
+            state: s.state,
+          };
+        });
+
+        // Sort: successful pings ascending by ms, then unmeasured, then failed.
+        rows.sort(function (a, b) {
+          var ag = a.failed ? 2 : (!a.hasSample ? 1 : 0);
+          var bg = b.failed ? 2 : (!b.hasSample ? 1 : 0);
+          if (ag !== bg) return ag - bg;
+          if (ag === 0) return a.ms - b.ms;
+          return a.city.localeCompare(b.city);
+        });
+
+        // Scale bars relative to the slowest successful ping (with a floor).
+        var maxMs = 0;
+        rows.forEach(function (r) {
+          if (!r.failed && r.hasSample && r.ms > maxMs) maxMs = r.ms;
+        });
+        if (maxMs < 50) maxMs = 50;
+
+        // Build DOM in one pass (replace contents to keep order in sync with sort).
+        var html = '';
+        rows.forEach(function (r) {
+          var cls = 'lb-row';
+          var valText;
+          var pct = 0;
+          if (r.failed) {
+            cls += ' bad';
+            valText = 'fail';
+            pct = 100;
+          } else if (!r.hasSample) {
+            cls += ' dim';
+            valText = '–';
+            pct = 0;
+          } else {
+            if (r.ms >= 200) cls += ' bad';
+            else if (r.ms >= 80) cls += ' warn';
+            valText = r.ms + ' ms';
+            pct = Math.max(2, Math.min(100, 100 * r.ms / maxMs));
+          }
+          html += '<div class="' + cls + '">'
+            + '<div class="lb-city">' + escapeHTML(r.city) +
+            '<span class="lb-region">' + escapeHTML(r.region) + '</span></div>'
+            + '<div class="lb-bar"><span style="width:' + pct.toFixed(1) + '%"></span></div>'
+            + '<div class="lb-val">' + valText + '</div>'
+            + '</div>';
+        });
+        lb.innerHTML = html;
+      }
+
+      function escapeHTML(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+          return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+      }
+
+      function poll() {
+        fetch('/api/status', { cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .then(render)
+          .catch(function (e) {
+            document.getElementById('hdrMeta').textContent = 'fetch error: ' + e;
+          })
+          .finally(function () {
+            setTimeout(poll, 2000);
+          });
+      }
+      poll();
+    })();
+  </script>
+</body>
+
+</html>

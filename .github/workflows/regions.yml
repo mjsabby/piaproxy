@@ -1,0 +1,84 @@
+name: Update regions.json
+
+# On-demand only. workflow_dispatch already requires repo write access,
+# but we further gate the job on the actor having admin permission so
+# only the repo owner / admins can run it (because it spends OpenAI
+# credits and pushes to the default branch).
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'OpenAI model to use'
+        required: false
+        default: 'gpt-5.4-mini'
+      output_path:
+        description: 'Output file (relative to repo root)'
+        required: false
+        default: 'regions.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regions-update
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Quick filter: only the repo owner login can even queue this job.
+    # Works for personal repos; for org-owned repos this passes only for
+    # the org login itself (effectively never), so the API check below
+    # is the real gate there.
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify actor has admin permission on this repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          perm=$(gh api \
+            "repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission" \
+            --jq .permission)
+          echo "actor=${{ github.actor }} permission=$perm"
+          if [ "$perm" != "admin" ]; then
+            echo "::error::admin permission required to run this workflow (got: $perm)"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'openai>=1.40,<2'
+
+      - name: Build regions.json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ inputs.model }}
+          REGIONS_OUT: ${{ inputs.output_path }}
+        run: python scripts/build_regions.py
+
+      - name: Commit and push
+        env:
+          OUT_PATH: ${{ inputs.output_path }}
+        run: |
+          set -euo pipefail
+          git add -- "$OUT_PATH"
+          if git diff --cached --quiet -- "$OUT_PATH"; then
+            echo "No changes to $OUT_PATH; nothing to commit."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit \
+            -m "Update $OUT_PATH (PIA regions -> lat/long via OpenAI + GeoNames cities5000)" \
+            -m "Triggered by @${{ github.actor }} via workflow_dispatch (run ${{ github.run_id }})."
+          git push
